@@ -1386,19 +1386,31 @@ function SVN_PLUGIN:GetSvnEntry(path)
 	return svnStatusEntries[path]
 end
 
+--
+-- NOTE for the onFiletreeFilePreXXXX
+-- return of false will make ZBS ignore the reqest
+-- any other return will make ZBS handle the request
+--
+
 function SVN_PLUGIN:onFiletreeFilePreRename(tree,id,src,dst)
+	
+	-- if not subversion
+	if not self.isSvnDir then 
+		return  -- let zbs do the job
+	end
+	
 	printf("SVN_PLUGIN:onFiletreeFilePreRename(source=%s,dest=%s)",vis(src),vis(dst))
 	local srcEntry=self:GetSvnEntry(src)
 	if not srcEntry then
 		local msg=sprintf("src %s is not in subversion\n",vis(src))
 		local btn=wx.wxMessageBox(msg,"Subversion",wx.wxCANCEL)
-		return nil -- let zbs do the job
+		return -- let zbs do the job
 	end
 	local dstEntry=self:GetSvnEntry(dst)
 	if dstEntry then
 		local msg=sprintf("dst %s is in subversion\n",vis(src))
 		local btn=wx.wxMessageBox(msg,"Subversion",wx.wxCANCEL)
-		return nil -- let zbs do the job
+		return -- let zbs do the job
 	end
 	local cmd="svn rename "..quote(src).." "..quote(dst)
 	local msg=sprintf("svn rename\n%s : %s\n%s : %s\n%s",
@@ -1407,14 +1419,11 @@ function SVN_PLUGIN:onFiletreeFilePreRename(tree,id,src,dst)
 		cmd
 	)
 	local btn=wx.wxMessageBox(msg,"Subversion",wx.wxYES+wx.wxNO)
-	if btn==wx.wxNO then return true end
+	if btn==wx.wxNO then return false end
 	self:do_command(cmd,true)
 	self:UpdateSvnStatus()
-	return true
-end
-
-function SVN_PLUGIN:onFiletreeFileRename(a,b,c,d)
-	printf("SVN_PLUGIN:onFiletreeFileRename(%s,%s,%s,%s)",vis(a),vis(b),vis(c),vis(d))
+	ide:GetProjectTree():RefreshChildren()
+	return false
 end
 
 --GIN:onFiletreeFilePreDelete(
@@ -1422,6 +1431,13 @@ end
 -- userdata: 0x415abe60 [wxTreeItemId(0x178c3f0, 384)],"/home/proj/Lua/ZBS/zbs-svn-tab/TESTSTAT/modified",nil)
 
 function SVN_PLUGIN:onFiletreeFilePreDelete(tree,id,source)
+	
+	-- if not subversion
+	if not self.isSvnDir then 
+		return  -- let zbs do the job
+	end
+	
+	
 	printf("SVN_PLUGIN:onFiletreeFilePreDelete(source=%s)",vis(source))
 	--
 	-- lookup entry
@@ -1430,27 +1446,27 @@ function SVN_PLUGIN:onFiletreeFilePreDelete(tree,id,source)
 	--
 	-- if not in SVN then let ZBS do its normal action
 	--
-	if sourceEntry==nil then return nil end
+	if sourceEntry==nil then return end
 	--
 	--
 	--
 	if sourceEntry.status=="normal" then
 		local cmd="svn delete "..quote(source)
-		local msg=sprintf("svn delete %s?\n%s\n%s",vis(source),vist(entry),cmd)
+		local msg=sprintf("svn delete %s?\n%s\n%s",vis(source),vist(sourceEntry),cmd)
 		local btn=wx.wxMessageBox(msg,"Subversion",wx.wxYES+wx.wxNO)
 		if btn==wx.wxNO then return true end
 		self:do_command(cmd,true)
 		self:UpdateSvnStatus()
-		return true
+		return false
 	end
 	local cmd="svn delete --force "..quote(source)
-	local msg=sprintf("REALLY delete %s\nis %s\n%s",vis(source),vist(entry),cmd)
+	local msg=sprintf("REALLY delete %s\nis %s\n%s",vis(source),vist(sourceEntry),cmd)
 	local btn=wx.wxMessageBox(msg,"Subversion",wx.wxYES+wx.wxNO+wx.wxICON_EXCLAMATION)
 	if btn==wx.wxNO then return false end
 	self:do_command(cmd,true)
 	self:UpdateSvnStatus()
-	return true
-
+	ide:GetProjectTree():RefreshChildren()
+	return false
 end
 
 --[[ this is of no use for us
