@@ -47,7 +47,7 @@ local function vist(val,sep)
 		while vv do
 			d[kk]=true
 			push(r,vt(vv))
-			kk=kk-1
+			kk=kk+1
 			vv=v[kk]
 		end
 		for kk,vv in pairs(v) do
