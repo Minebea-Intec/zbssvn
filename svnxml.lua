@@ -132,7 +132,7 @@ local function parsestr(str)
 	--
 	-- check for document prolog (ignored for svn)
 	--
-	local a,b=find(str,"<(%?%w+)",pos)
+	local a,b,xmltag=find(str,"<(%?%w+)",pos)
 	if a then
 		pos=b+1
 		xmlobj={xmltag}
