@@ -23,7 +23,7 @@ end
 function xml_mt:cdata()
 	local cdata=self[2]
 	if cdata and type(cdata)=="string" then return cdata end
-	return nil,"no cdata in <"..self[1]..">"
+	return nil,"no cdata in <"..self:tag()..">"
 end
 
 function xml_mt:element(name)
@@ -33,7 +33,7 @@ function xml_mt:element(name)
 			return obj,i
 		end
 	end
-	return nil,"no element <"..name.."> in <"..self[1]..">"
+	return nil,"no element <"..tostring(name).."> in <"..self:tag()..">"
 end
 
 function xml_mt:elements()
@@ -48,7 +48,7 @@ end
 function xml_mt:attribute(name)
 	local attr=self[name]
 	if attr then return attr end
-	return nil,"no attribute "..name.." in <"..self[1]..">"
+	return nil,"no attribute "..tostring(name).." in <"..self:tag()..">"
 end
 
 --
@@ -132,6 +132,7 @@ local function parsestr(str)
 	--
 	-- check for document prolog (ignored for svn)
 	--
+	local xmlobj
 	local a,b,xmltag=find(str,"<(%?%w+)",pos)
 	if a then
 		pos=b+1
