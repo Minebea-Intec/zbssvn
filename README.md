@@ -49,7 +49,26 @@ Next you have install zbssvn at the right place:
 
 # Usage
 
-t.b.d.
+To have an effect in ZBS, you have to start ZBS with a project, which _has_ been checked out from a subversion repository.
+For now there is no option to checkout or import a project from within ZBS.
+
+zbssvn will then show the status of each file
+![PNG](Documentation/svn-example1.png)
+
+In the pending changes tab there are two types of icons.
+
+On the left hand "actions". A tooltip will show the action performed on the icon. The icon will only be enabled, if action is possible on the selected items in the tab.
+
+Most of the action will show either a simple confirmation dialog or a bigger subversion dialog. The bigger dialog may contain
+
+- a comment field, where you can enter a commit comment.
+- a combobox showing the last commit comments.
+- a checkbox list with the files. Action will only take place for marked files
+- a diff area. Will show the diff of a file, when selected in the file list.
+
+Not all elements are always shown, this may depend on the selected action.
+
+On the right hand is a list of "status" icons. By these you can toggle, of which status files shall be displayed in the pending changes tab.
 
 # ToDo
 
