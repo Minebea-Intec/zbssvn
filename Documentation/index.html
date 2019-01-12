@@ -1,0 +1,40 @@
+<html>
+<head>
+<title>zbssvn - a subversion plugin for ZeroBrane Studio</title>
+
+</head>
+<body>
+<h1>zbssvn - a subversion plugin for ZeroBrane Studio</h1>
+<h2>SVN actions</h2>
+<table border=1>
+<tr><th>Symbol</th><th>Function</th><th>Modifies</th><th>Dialog</td></tr>
+<tr><td><img src="../PNGs/action-refresh.png"></td><td>Refresh symbols in ZBS</td><td>none</td><td>-</td></tr>
+<tr><td><img src="../PNGs/action-update.png"></td><td>Update working directory from repository</td><td>local files</td><td>Confirm</td></tr>
+<tr><td><img src="../PNGs/action-info.png"></td><td>Shows subversion info about project</td><td>none</td><td>Information</td></tr>
+<tr><td><img src="../PNGs/action-commit.png"></td><td>Commit selected files to repository</td><td>repository</td><td>Commit message</td></tr>
+<tr><td><img src="../PNGs/action-revert.png"></td><td>Revert changes in selected files</td><td>local</td><td>Revert dialog</td></tr>
+<tr><td><img src="../PNGs/action-resolve.png"></td><td>Mark conflicted items as resolved</td><td>status only</td><td>Confirm</td></tr>
+<tr><td><img src="../PNGs/action-add.png"></td><td>Add new (unversioned) files to project</td><td>status only</td><td>Confirm</td></tr>
+<tr><td><img src="../PNGs/action-delete.png"></td><td>Remove files from project</td><td>local</td><td>Confirm</td></tr>
+<tr><td><img src="../PNGs/action-ignore.png"></td><td>Ignore files</td><td>svn:ignore</td><td>Confirm</td></tr>
+<tr><td><img src="../PNGs/action-diff.png"></td><td>Show diff</td><td>none</td><td>Diff dialog or external tool</td></tr>
+</table>
+
+<h2>status display</h2>
+These symbols controls, which items are displayed in the "Pending Changes" tab.
+<table border=1>
+<tr><th>Symbol</th><th>Show</th><th>Default</th></tr>
+<tr><td><img src="../PNGs/status-normal.png"></td><td>unmodified files</td><td>off</td></tr>
+<tr><td><img src="../PNGs/status-modified.png"></td><td>modified files</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-conflicted.png"></td><td>conflicted files</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-added.png"></td><td>files added to project</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-deleted.png"></td><td>files deleted from project</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-incomplete.png"></td><td>folders which have not checkedout complete</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-unversioned.png"></td><td>files not added to project</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-obstructed.png"></td><td>files with defectiv subversion info</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-missing.png"></td><td>files deleted from local folder, but not from subversion</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-none.png"></td><td>files without any status</td><td>on</td></tr>
+<tr><td><img src="../PNGs/status-external.png"></td><td>external links</td><td>off</td></tr>
+<tr><td><img src="../PNGs/status-ignored.png"></td><td>files mentioned in svn:ignore</td><td>off</td></tr>
+</table></body>
+</html>
