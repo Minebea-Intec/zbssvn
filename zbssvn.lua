@@ -213,7 +213,7 @@ local SVN_STATUS=
 	{name="incomplete",	allowed=QW"update"},
 	{name="unversioned",allowed=QW"add delete ignore"},
 	{name="obstructed",	},
-	{name="missing",	allowed=QW"update"},
+	{name="missing",	allowed=QW"update delete"},
 	{name="none",		},
 	{name="external",	allowed=QW"update"	,show=false },
 	{name="ignored",	allowed=QW"delete"	,show=false },
