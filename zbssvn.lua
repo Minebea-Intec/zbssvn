@@ -383,8 +383,15 @@ function SVN_PLUGIN:CreateDialog(Caption,action,FileList,comment_needed,diffallo
 	--
 	-- the checklist box
 	--
-
+	local base=0
+	if #FileList>1 then
+		table.insert(FileList,1,"*ALL*")
+		base=1
+	end
 	local checkListBox=wx.wxCheckListBox(dialog,ID_CHECKLISTBOX,wx.wxDefaultPosition,wx.wxDefaultSize,FileList)
+	for i=0,#FileList-1 do
+		checkListBox:Check(i,true)
+	end
 	mainSizer:Add(checkListBox,0,wx.wxEXPAND+wx.wxALL,5)
 	--
 	-- the diff control
@@ -420,15 +427,20 @@ function SVN_PLUGIN:CreateDialog(Caption,action,FileList,comment_needed,diffallo
 	end
 
 	local function HandleCheckBoxSelected(event)
-		if diffCtrl then
-			local check_box_text = event:GetString()
+		local check_box_text = event:GetString()
+		if check_box_text=="*ALL*" then
+			local on=checkListBox:IsChecked(0)
+			for i=base,#FileList-1 do
+				checkListBox:Check(i,on)
+			end
+		elseif diffCtrl then
 			local cmd=sprintf("svn diff \"%s\"",self:FixPath(check_box_text))
 			local output,sts=self:do_command(cmd)
 			DiffOutputToTextCtrl(diffCtrl,output)
 		end
 
 		local anyChecked=false;
-		for i=0,#FileList-1 do
+		for i=base,#FileList-1 do
 			if checkListBox:IsChecked(i) then
 				anyChecked=true
 				break
@@ -450,7 +462,7 @@ function SVN_PLUGIN:CreateDialog(Caption,action,FileList,comment_needed,diffallo
 		if action=="resolve" then action="resolve --accept working" end
 
 		local selected_filenames={}
-		for i=0,#FileList-1 do
+		for i=base,#FileList-1 do
 			if checkListBox:IsChecked(i) then
 				push(selected_filenames,quote(self:FixPath(checkListBox:GetString(i))))
 			end
