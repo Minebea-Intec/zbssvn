@@ -25,21 +25,37 @@ local function gettime()
 	return wx.wxGetLocalTimeMillis():ToDouble()*0.001
 end
 
-local function quote(value)
+local DIRSEP=package.config:sub(1,1)
+local function quoteunix(path)
+	return "'"..path:gsub("'","'\\''").."'"
+end
+local function quotedos(path)
+	return '"'..path:gsub('"','""')..'"'
+end
+local quotepath=({['\\']=quotedos,['/']=quoteunix})[DIRSEP] or error("no quote function for DIRSEP='"..DIRSEP.."'")
+
+
+local function quoteshell(value)
 	if type(value)=="table" then
 		local q={}
-		for k,v in pairs(value) do
-			q[k]='"'..tostring(v)..'"'
+		for k,v in ipairs(value) do
+			q[k]=quotepath(v)
 		end
 		return join(q,' ')
-	else
-		return '"'..tostring(value)..'"'
 	end
+	return quotepath(value)
 end
 
 local function d2u(path)
-	return path:gsub("\\","/"):gsub("/$","")
+	return path:gsub("\\",DIRSEP):gsub("[\\/]$","")
 end
+
+local function add(t,k)
+	if rawget(t,k) then return end
+	push(t,k) t[k]=#t
+end
+
+
 -----------------------------------------------------
 -- read config values
 -----------------------------------------------------
@@ -87,6 +103,7 @@ local ID_DELETE  = ID("svn.action.delete")
 local ID_RESOLVE = ID("svn.action.resolve")
 local ID_DIFF    = ID("svn.action.diff")
 local ID_IGNORE  = ID("svn.action.ignore")
+local ID_UNIGNORE= ID("svn.action.unignore")
 
 local ID_CHECKLISTBOX      = ID("svn.checklistbox")
 local ID_COMBOBOX          = ID("svn.combobox")
@@ -107,6 +124,7 @@ local spairs=utils.spairs
 local printf=utils.printf
 local save_file=utils.save_file
 
+printf("DIRSEP=%q\n",DIRSEP)
 
 
 --
@@ -128,11 +146,20 @@ function SVN_PLUGIN:do_command(cmd,showoutput)
 	local t0=gettime()
 	wx.wxBeginBusyCursor()
 	wx.wxSetEnv("LANG","C") -- wxExecuteStdoutStderr does not like utf8 output :-/
-	local sts,output,errors=wx.wxExecuteStdoutStderr(cmd)
+
+	local fd=assert(io.popen(cmd.." 2>&1 ; echo $?"))
+	local output=fd:read("*all")
+	local errors=""
+	fd:close()
+	local sts
+	output=output:gsub("%s*%d+%s*$",function(n) sts=tonumber(n) return ""end)
+
+	--local sts,output,errors=wx.wxExecuteStdoutStderr(cmd)
+	--output=join(output,"\n"):gsub("%s+$","")
+	--errors=join(errors,"\n"):gsub("%s+$","")	
+
 	wx.wxEndBusyCursor()
 	local t1=gettime()
-	output=join(output,"\n"):gsub("%s+$","")
-	errors=join(errors,"\n"):gsub("%s+$","")	
 	if showoutput then
 		if output~="" then DisplayOutputLn(output) end
 		if errors~="" then DisplayOutputLn(errors) end
@@ -150,7 +177,81 @@ function SVN_PLUGIN:do_command(cmd,showoutput)
 	return output..errors,sts
 end
 
+function SVN_PLUGIN:svn_set_ignore(files,remove)
+	local function QL(text)
+		local lines={}
+		for line in text:gmatch("[^\r\n]+") do
+			lines[line]=true
+		end
+		return lines
+	end
+	local function keys(t)
+		local ks={}
+		for k in pairs(t) do ks[#ks+1]=k end
+		return ks
+	end
 
+	--------------------------------------------------
+	-- process arguments
+	--------------------------------------------------
+	local PROPERTIES={}
+	local changed={}
+	for a,arg in ipairs(files) do
+		arg=arg:gsub("/$","")
+		local path,name=arg:match("^(.*)/([^/]+)$")
+		if not path then path,name=".",arg end
+		local properties=PROPERTIES[path]
+		if properties==nil then
+			local cmd=sprintf("svn propget svn:ignore %s 2>/dev/null",quoteshell(path))
+			local fd=assert(io.popen(cmd,"r"))
+			local output=fd:read("*all")
+			fd:close()
+			properties=QL(output)
+			PROPERTIES[path]=properties
+		end
+		if remove then
+			if properties[name] then
+				properties[name]=nil
+				changed[path]=properties
+			end
+		else
+			if not properties[name] then
+				properties[name]=true
+				changed[path]=properties
+			end
+		end
+	end
+	utils.ShowData("PROPERTIES",PROPERTIES)
+	utils.ShowData("changed",changed)
+	--------------------------------------------------
+	-- flush changes/new properties
+	--------------------------------------------------
+	for dir,properties in pairs(changed) do
+		printf("properties for '%s' changed\n",dir)
+		properties=keys(properties)
+		table.sort(properties)
+		if #properties>0 then
+			properties=join(properties,"\n").."\n"
+			io.write(properties)
+			local ppath=TEMP.."/properties.txt"
+			save_file(ppath,properties)
+			local cmd=sprintf("svn propset svn:ignore -F %s %s",ppath,quoteshell(dir))
+			local output,sts=self:do_command(cmd)
+			if sts~=0 then
+				SVN_PLUGIN:SetStatus("failed %s",cmd)
+				return nil
+			end
+		else
+			local cmd=sprintf("svn propdel svn:ignore %s",quoteshell(dir))
+			local output,sts=self:do_command(cmd)
+			if sts~=0 then
+				SVN_PLUGIN:SetStatus("failed %s",cmd)
+				return nil
+			end			
+		end
+			
+	end
+end
 
 function SVN_PLUGIN:get_svn_xml(action,args)
 	local cmd="svn "..action.." "..args
@@ -177,7 +278,7 @@ function SVN_PLUGIN:GetSvnLog()
 	local comments=self.SvnLogComments
 	if comments==nil then
 		wx.wxBeginBusyCursor()
-		local svnlog=self:get_svn_xml("log","--xml --limit 20 "..quote(self.WorkingDir))
+		local svnlog=self:get_svn_xml("log","--xml --limit 20 "..quoteshell(self.WorkingDir))
 		wx.wxEndBusyCursor()
 		comments={}
 		for logentry in svnlog:elements() do
@@ -216,7 +317,7 @@ local SVN_STATUS=
 	{name="missing",	allowed=QW"update delete"},
 	{name="none",		},
 	{name="external",	allowed=QW"update"	,show=false },
-	{name="ignored",	allowed=QW"delete"	,show=false },
+	{name="ignored",	allowed=QW"delete unignore"	,show=false },
 }
 -- make the hash tables by name
 for i,s in ipairs(SVN_STATUS) do SVN_STATUS[s.name]=s end
@@ -235,6 +336,7 @@ local SVN_ACTION=
 	{name="add"},
 	{name="delete"},
 	{name="ignore"},
+	{name="unignore"},
 	{}, -- separator
 	{name="diff"},
 }
@@ -300,6 +402,7 @@ function SVN_PLUGIN:CreateMenuFor(enables)
 		{ ID_ADD,TR("Add") },
 		{ ID_DELETE,TR("Delete") },
 		{ ID_IGNORE,TR("Ignore") },
+		{ ID_UNIGNORE,TR("Unignore") },
 		{ },-- separator
 		{ ID_DIFF,TR("SVN Diff") },
 	}
@@ -312,6 +415,7 @@ function SVN_PLUGIN:CreateMenuFor(enables)
 	menu:Enable(ID_DELETE,enables.delete ==true)
 	menu:Enable(ID_DIFF,enables.diff   ==true)
 	menu:Enable(ID_IGNORE,enables.ignore ==true)
+	menu:Enable(ID_UNIGNORE,enables.unignore ==true)
 	return menu
 end
 
@@ -464,7 +568,7 @@ function SVN_PLUGIN:CreateDialog(Caption,action,FileList,comment_needed,diffallo
 		local selected_filenames={}
 		for i=base,#FileList-1 do
 			if checkListBox:IsChecked(i) then
-				push(selected_filenames,quote(self:FixPath(checkListBox:GetString(i))))
+				push(selected_filenames,quoteshell(self:FixPath(checkListBox:GetString(i))))
 			end
 		end
 		selected_filenames=table.concat(selected_filenames," ")
@@ -526,7 +630,7 @@ function SVN_PLUGIN:DoAskAction(title,action,filenames)
 			filenames[f]=self:FixPath(filenames[f])
 		end
 
-		local cmd="svn "..action.." "..quote(filenames)
+		local cmd="svn "..action.." "..quoteshell(filenames)
 		local btn=wx.wxMessageBox(msg.."\n\n("..cmd..")","Subversion",wx.wxOK+wx.wxCANCEL+wx.wxICON_QUESTION)
 		if btn==wx.wxOK then
 			self:do_command(cmd,true)
@@ -548,12 +652,10 @@ function SVN_PLUGIN:DoAskDelete(filenames)
 	return self:DoAskAction("Delete files","delete",filenames)
 end
 
-
-
 function SVN_PLUGIN:DoShowDiff(filename)
 	if filename then
 		if path_to_diff_tool then
-			local qname=quote(self:FixPath(filename))
+			local qname=quoteshell(self:FixPath(filename))
 			local cmd=path_to_diff_tool.." "..qname
 			if path_to_diff_tool:match("{{path}}") then
 				cmd=path_to_diff_tool:gsub("{{path}}",qname)
@@ -561,9 +663,67 @@ function SVN_PLUGIN:DoShowDiff(filename)
 			printf("cmd=[[%s]]\n",cmd)
 			os.execute(cmd.." &")
 		else
-			local cmd="svn diff "..quote(self:FixPath(filename))
+			local cmd="svn diff "..quoteshell(self:FixPath(filename))
 			local output,sts=self:do_command(cmd)
 			self:ShowDiffOutputWindow(filename,output)
+		end
+	end
+end
+
+function SVN_PLUGIN:DoOnIgnore(filenames,remove)
+	utils.ShowData("ignore.filenames",filenames)
+	for f=1,#filenames do
+			filenames[f]=self:FixPath(filenames[f])
+	end
+	utils.ShowData("ignore.filenames",filenames)
+
+	local directories=setmetatable({},mt_autocreate)
+	for _,filename in ipairs(filenames) do
+		local dir,name=filename:match("^(.+)/(.+)$")
+		if not dir then dir='.' name=filename end
+		if dir then
+			push(directories[dir].filenames,name)
+			local ext=filename:match("%.%w+$")
+			if ext then
+				add(directories[dir].exts,"*"..ext)
+			end
+		end
+	end
+	utils.ShowData("ignore.directories",directories)
+	local arguments={}
+	local menuEntries={}
+	local function add_ignore(dir,args)
+		if args and #args>0 then
+			local n=#arguments+1
+			local msg=sprintf("in %s ignore %s",dir,join(args," "))
+			menuEntries[n]={n,msg}
+			arguments[n]={dir=dir,args=args}
+		end
+	end
+
+	for directory,data in spairs(directories) do
+		add_ignore(directory,data.filenames)
+		add_ignore(directory,data.exts)
+	end
+	utils.ShowData("ignore.arguments",arguments)
+	utils.ShowData("ignore.menuEntries",menuEntries)
+
+	local menu = wx.wxMenu(menuEntries)
+	local selected_arguments
+	menu:Connect(wx.wxID_ANY,wx.wxEVT_COMMAND_MENU_SELECTED,function(event)
+			selected_arguments=arguments[event:GetId()]
+		end)
+	self.svnListCtrl:PopupMenu(menu)
+	if selected_arguments then
+		local args={}
+		for a,arg in ipairs(selected_arguments.args) do
+			push(args,selected_arguments.dir.."/"..arg)
+		end
+
+		local btn=wx.wxMessageBox("svn ignore "..quoteshell(args),"Subversion",wx.wxOK+wx.wxCANCEL+wx.wxICON_QUESTION)
+		if btn==wx.wxOK then
+			self:svn_set_ignore(args,remove)
+			self:UpdateSvnStatus()
 		end
 	end
 end
@@ -675,7 +835,7 @@ function SVN_PLUGIN:CreateSvnPanel(parent)
 		end
 
 
-		local info=self:get_svn_xml("info","--xml "..quote(self.WorkingDir))
+		local info=self:get_svn_xml("info","--xml "..quoteshell(self.WorkingDir))
 
 		local entry=info:element("entry")
 		AddInfo("Revision",entry:attribute"revision")
@@ -732,53 +892,15 @@ function SVN_PLUGIN:CreateSvnPanel(parent)
 
 
 
-	local function add(t,k)
-		if rawget(t,k) then return end
-		push(t,k) t[k]=#t
-	end
 
 	SVN_ACTION.ignore.onClick=function(event)
 		local filenames=SVN_PLUGIN:GetSelectedListItemsForAction("ignore")
-		local directories=setmetatable({},mt_autocreate)
-		for _,filename in ipairs(filenames) do
-			local dir,name=filename:match("^(.+)/(.+)$")
-			if dir then
-				push(directories[dir].filenames,name)
-				local ext=name:match("%.%w+$")
-				if ext then
-					add(directories[dir].exts,"*"..ext)
-				end
-			end
-		end
-		local commands={}
-		local menuEntries={}
-		for directory,data in spairs(directories) do
-			local n=#commands+1
-			local cmd=sprintf("cd \"%s\" && svnignore %s",directory,quote(data.filenames))
-			local msg=sprintf("in %s ignore %s",directory,join(data.filenames," "))
-			menuEntries[n]={n,msg}
-			commands[n]=cmd
-			n=n+1
-			if #data.exts>0 then
-				local cmd=sprintf("cd \"%s\" && svnignore %s",directory,quote(data.exts))
-				local msg=sprintf("in %s ignore %s",directory,join(data.exts," "))
-				menuEntries[n]={n,msg,cmd=cmd}
-				commands[n]=cmd
-			end
-		end
-		local menu = wx.wxMenu(menuEntries)
-		local selectedcommand
-		menu:Connect(wx.wxID_ANY,wx.wxEVT_COMMAND_MENU_SELECTED,function(event)
-				selectedcommand=commands[event:GetId()]
-			end)
-		self.svnListCtrl:PopupMenu(menu)
-		if selectedcommand then
-			local btn=wx.wxMessageBox(selectedcommand,"Subversion",wx.wxOK+wx.wxCANCEL+wx.wxICON_QUESTION)
-			if btn==wx.wxOK then
-				self:do_command(selectedcommand)
-				self:UpdateSvnStatus()
-			end
-		end
+		self:DoOnIgnore(filenames)
+	end
+
+	SVN_ACTION.unignore.onClick=function(event)
+		local filenames=SVN_PLUGIN:GetSelectedListItemsForAction("unignore")
+		self:DoOnIgnore(filenames,true)
 	end
 
 	SVN_ACTION.commit.onClick=function(event)
@@ -891,6 +1013,7 @@ function SVN_PLUGIN:CreateSvnPanel(parent)
 	svnListCtrl:Connect(ID_RESOLVE,wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.resolve.onClick)
 	svnListCtrl:Connect(ID_DIFF,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.diff.onClick)
 	svnListCtrl:Connect(ID_IGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.ignore.onClick)
+	svnListCtrl:Connect(ID_UNIGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.unignore.onClick)
 
 	return svnPanel
 end
@@ -963,7 +1086,7 @@ function SVN_PLUGIN:Step1ReadSvnStatus()
 	if self.WorkingDir then
 		local t0=gettime()
 		wx.wxBeginBusyCursor()
-		self.svn_status=self:get_svn_xml("status","--xml --no-ignore --verbose "..quote(self.WorkingDir))
+		self.svn_status=self:get_svn_xml("status","--xml --no-ignore --verbose "..quoteshell(self.WorkingDir))
 		wx.wxEndBusyCursor()
 		local t1=gettime()
 		if verbose>=2 then printf("SVN_PLUGIN:svn status %.3f sec\n",t1-t0) end
@@ -1274,6 +1397,14 @@ local function onMenuResolve()
 	end
 end
 
+local function onMenuIgnore()
+	SVN_PLUGIN:DoOnIgnore(SVN_PLUGIN:GetSelectedTreeItems())
+end
+
+local function onMenuUnIgnore()
+	SVN_PLUGIN:DoOnIgnore(SVN_PLUGIN:GetSelectedTreeItems(),true)
+end
+
 local function onMenuDelete()
 	SVN_PLUGIN:DoAskDelete(SVN_PLUGIN:GetSelectedTreeItems())
 end
@@ -1326,6 +1457,8 @@ function SVN_PLUGIN:onRegister()
 	tree:Connect(ID_RESOLVE,wx.wxEVT_COMMAND_MENU_SELECTED,onMenuResolve)
 	tree:Connect(ID_COMMIT, wx.wxEVT_COMMAND_MENU_SELECTED,onMenuCommit)
 	tree:Connect(ID_DIFF, 	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuDiff)
+	tree:Connect(ID_IGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuIgnore)
+	tree:Connect(ID_UNIGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuUnIgnore)
 end
 
 function SVN_PLUGIN:onUnRegister()
@@ -1344,11 +1477,11 @@ function SVN_PLUGIN:onUnRegister()
 		ide:RemovePanel("svnpanel") 
 		self.panel=nil
 	end
---	local tb = ide:GetToolBar()
---	tb:DeleteTool(tool)
---	tb:Realize()
---	DeleteCustomerPage(ide:GetProjectNotebook(), TR('SVN'))  -- remove old page including all subitems
---	_svn_tree = nil
+	--	local tb = ide:GetToolBar()
+	--	tb:DeleteTool(tool)
+	--	tb:Realize()
+	--	DeleteCustomerPage(ide:GetProjectNotebook(), TR('SVN'))  -- remove old page including all subitems
+	--	_svn_tree = nil
 	--- _selected_files = nil -- store all selected files here
 
 end
@@ -1405,12 +1538,12 @@ end
 --
 
 function SVN_PLUGIN:onFiletreeFilePreRename(tree,id,src,dst)
-	
+
 	-- if not subversion
 	if not self.isSvnDir then 
 		return  -- let zbs do the job
 	end
-	
+
 	printf("SVN_PLUGIN:onFiletreeFilePreRename(source=%s,dest=%s)",vis(src),vis(dst))
 	local srcEntry=self:GetSvnEntry(src)
 	if not srcEntry then
@@ -1424,7 +1557,7 @@ function SVN_PLUGIN:onFiletreeFilePreRename(tree,id,src,dst)
 		local btn=wx.wxMessageBox(msg,"Subversion",wx.wxCANCEL)
 		return -- let zbs do the job
 	end
-	local cmd="svn rename "..quote(src).." "..quote(dst)
+	local cmd="svn rename "..quoteshell(src).." "..quoteshell(dst)
 	local msg=sprintf("svn rename\n%s : %s\n%s : %s\n%s",
 		vis(src),vist(srcEntry),
 		vis(dst),vist(dstEntry),
@@ -1443,13 +1576,13 @@ end
 -- userdata: 0x415abe60 [wxTreeItemId(0x178c3f0, 384)],"/home/proj/Lua/ZBS/zbs-svn-tab/TESTSTAT/modified",nil)
 
 function SVN_PLUGIN:onFiletreeFilePreDelete(tree,id,source)
-	
+
 	-- if not subversion
 	if not self.isSvnDir then 
 		return  -- let zbs do the job
 	end
-	
-	
+
+
 	printf("SVN_PLUGIN:onFiletreeFilePreDelete(source=%s)",vis(source))
 	--
 	-- lookup entry
@@ -1463,7 +1596,7 @@ function SVN_PLUGIN:onFiletreeFilePreDelete(tree,id,source)
 	--
 	--
 	if sourceEntry.status=="normal" then
-		local cmd="svn delete "..quote(source)
+		local cmd="svn delete "..quoteshell(source)
 		local msg=sprintf("svn delete %s?\n%s\n%s",vis(source),vist(sourceEntry),cmd)
 		local btn=wx.wxMessageBox(msg,"Subversion",wx.wxYES+wx.wxNO)
 		if btn==wx.wxNO then return true end
@@ -1471,7 +1604,7 @@ function SVN_PLUGIN:onFiletreeFilePreDelete(tree,id,source)
 		self:UpdateSvnStatus()
 		return false
 	end
-	local cmd="svn delete --force "..quote(source)
+	local cmd="svn delete --force "..quoteshell(source)
 	local msg=sprintf("REALLY delete %s\nis %s\n%s",vis(source),vist(sourceEntry),cmd)
 	local btn=wx.wxMessageBox(msg,"Subversion",wx.wxYES+wx.wxNO+wx.wxICON_EXCLAMATION)
 	if btn==wx.wxNO then return false end
