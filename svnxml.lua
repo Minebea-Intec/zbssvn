@@ -10,6 +10,11 @@
 local find=string.find
 local push=table.insert
 
+local qt={quot='"',apos='\'',lt='<',gt='>',amp='&'}
+local function unquote(str)
+	return (str:gsub("&(%w+);",qt))
+end
+
 --
 -- xml element metatable
 --
@@ -87,7 +92,7 @@ local function parsestr(str)
 		-- attributes
 		--
 		local obj=setmetatable({tag},xml_mt)
-		for nam,val in namval do obj[nam]=val end
+		for nam,val in namval do obj[nam]=unquote(val) end
 
 		--
 		-- quick end-of-tag
@@ -115,7 +120,7 @@ local function parsestr(str)
 				local a,b,cdata=find(str,"^([^<>]+)%s*<",pos)
 				if not a then fail("Expected literal") end
 				pos=b+1-1 -- exclude '<'
-				push(obj,cdata)
+				push(obj,unquote(cdata))
 			end
 		end
 
