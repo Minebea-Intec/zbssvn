@@ -145,7 +145,7 @@ function SVN_PLUGIN:do_command(cmd,showoutput)
 	end
 	local t0=gettime()
 	wx.wxBeginBusyCursor()
-	wx.wxSetEnv("LANG","C") -- wxExecuteStdoutStderr does not like utf8 output :-/
+	--wx.wxSetEnv("LANG","C") -- wxExecuteStdoutStderr does not like utf8 output :-/
 
 	local fd=assert(io.popen(cmd.." 2>&1 ; echo $?"))
 	local output=fd:read("*all")
@@ -577,7 +577,7 @@ function SVN_PLUGIN:CreateDialog(Caption,action,FileList,comment_needed,diffallo
 		if textCtrl then
 			local comment=textCtrl:GetValue():gsub("^%s+",""):gsub("%s+$","")
 			printf("comment is %s\n",vis(comment))
-			cmd = "svn "..action..' -m '..'"'..comment..'" '..selected_filenames
+			cmd = "svn "..action..' -m '..quoteshell(comment)..' '..selected_filenames
 		else
 			cmd = "svn "..action..' '..selected_filenames
 		end
