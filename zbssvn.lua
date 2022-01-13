@@ -102,6 +102,7 @@ local ID_ADD     = ID("svn.action.add")
 local ID_DELETE  = ID("svn.action.delete")
 local ID_RESOLVE = ID("svn.action.resolve")
 local ID_DIFF    = ID("svn.action.diff")
+local ID_BLAME   = ID("svn.action.blame")
 local ID_IGNORE  = ID("svn.action.ignore")
 local ID_UNIGNORE= ID("svn.action.unignore")
 
@@ -141,7 +142,7 @@ wx.wxDARK_RED=wx.wxColour(128,0,0);
 function SVN_PLUGIN:do_command(cmd,showoutput)
 	self.SetStatus("Execute %.80s",cmd)
 	if verbose>=1 then
-		printf("SVN_PLUGIN:execute[[%s]]\n",cmd) 
+		printf("SVN_PLUGIN:execute[[%s]]\n",cmd)
 	end
 	local t0=gettime()
 	wx.wxBeginBusyCursor()
@@ -156,7 +157,7 @@ function SVN_PLUGIN:do_command(cmd,showoutput)
 
 	--local sts,output,errors=wx.wxExecuteStdoutStderr(cmd)
 	--output=join(output,"\n"):gsub("%s+$","")
-	--errors=join(errors,"\n"):gsub("%s+$","")	
+	--errors=join(errors,"\n"):gsub("%s+$","")
 
 	wx.wxEndBusyCursor()
 	local t1=gettime()
@@ -247,9 +248,9 @@ function SVN_PLUGIN:svn_set_ignore(files,remove)
 			if sts~=0 then
 				SVN_PLUGIN:SetStatus("failed %s",cmd)
 				return nil
-			end			
+			end
 		end
-			
+
 	end
 end
 
@@ -306,9 +307,9 @@ end
 --============================================================
 local SVN_STATUS=
 {
-	{name="normal",		allowed=QW"update delete",show=false},
-	{name="modified",	allowed=QW"update commit revert diff"},
-	{name="conflicted",	allowed=QW"update revert resolve diff"},
+	{name="normal",		allowed=QW"update delete blame",show=false},
+	{name="modified",	allowed=QW"update commit revert diff blame"},
+	{name="conflicted",	allowed=QW"update revert resolve diff blame"},
 	{name="added",		allowed=QW"commit revert diff"},
 	{name="deleted",	allowed=QW"commit revert"},
 	{name="incomplete",	allowed=QW"update"},
@@ -339,6 +340,7 @@ local SVN_ACTION=
 	{name="unignore"},
 	{}, -- separator
 	{name="diff"},
+	{name="blame"},
 }
 for i,action in ipairs(SVN_ACTION) do if action.name then SVN_ACTION[action.name]=action end end
 
@@ -405,6 +407,7 @@ function SVN_PLUGIN:CreateMenuFor(enables)
 		{ ID_UNIGNORE,TR("Unignore") },
 		{ },-- separator
 		{ ID_DIFF,TR("SVN Diff") },
+		{ ID_BLAME,TR("SVN Blame") },
 	}
 
 	-- enable menu entry according to svn state
@@ -416,6 +419,7 @@ function SVN_PLUGIN:CreateMenuFor(enables)
 	menu:Enable(ID_DIFF,enables.diff   ==true)
 	menu:Enable(ID_IGNORE,enables.ignore ==true)
 	menu:Enable(ID_UNIGNORE,enables.unignore ==true)
+	menu:Enable(ID_BLAME,enables.blame   ==true)
 	return menu
 end
 
@@ -433,7 +437,7 @@ local function DiffOutputToTextCtrl(ctrl,output)
 			want_color=wx.wxDARK_RED
 		end
 		if have_color~=want_color then
-			if block then 
+			if block then
 				ctrl:AppendText(block)
 				block=nil
 			end
@@ -442,7 +446,7 @@ local function DiffOutputToTextCtrl(ctrl,output)
 		end
 		block=(block or "")..line.."\n"
 	end
-	if block then 
+	if block then
 		ctrl:AppendText(block)
 	end
 end
@@ -670,6 +674,14 @@ function SVN_PLUGIN:DoShowDiff(filename)
 	end
 end
 
+function SVN_PLUGIN:DoShowBlame(filename)
+	if filename then
+		local cmd="svn blame "..quoteshell(self:FixPath(filename))
+		local output,sts=self:do_command(cmd)
+		self:ShowDiffOutputWindow(filename,output)
+	end
+end
+
 function SVN_PLUGIN:DoOnIgnore(filenames,remove)
 	utils.ShowData("ignore.filenames",filenames)
 	for f=1,#filenames do
@@ -814,6 +826,13 @@ function SVN_PLUGIN:CreateSvnPanel(parent)
 		local filenames=SVN_PLUGIN:GetSelectedListItemsForAction("diff")
 		if #filenames==1 then
 			self:DoShowDiff(filenames[1])
+		end
+	end
+
+	SVN_ACTION.blame.onClick=function(event)
+		local filenames=SVN_PLUGIN:GetSelectedListItemsForAction("blame")
+		if #filenames==1 then
+			self:DoShowBlame(filenames[1])
 		end
 	end
 
@@ -1008,12 +1027,13 @@ function SVN_PLUGIN:CreateSvnPanel(parent)
 	svnListCtrl:Connect(ID_UPDATE,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.update.onClick)
 	svnListCtrl:Connect(ID_COMMIT,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.commit.onClick)
 	svnListCtrl:Connect(ID_REVERT,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.revert.onClick)
-	svnListCtrl:Connect(ID_ADD,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.add.onClick)
+	svnListCtrl:Connect(ID_ADD,     wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.add.onClick)
 	svnListCtrl:Connect(ID_DELETE,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.delete.onClick)
-	svnListCtrl:Connect(ID_RESOLVE,wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.resolve.onClick)
+	svnListCtrl:Connect(ID_RESOLVE, wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.resolve.onClick)
 	svnListCtrl:Connect(ID_DIFF,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.diff.onClick)
-	svnListCtrl:Connect(ID_IGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.ignore.onClick)
-	svnListCtrl:Connect(ID_UNIGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.unignore.onClick)
+	svnListCtrl:Connect(ID_BLAME,	wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.blame.onClick)
+	svnListCtrl:Connect(ID_IGNORE,  wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.ignore.onClick)
+	svnListCtrl:Connect(ID_UNIGNORE,wx.wxEVT_COMMAND_MENU_SELECTED,SVN_ACTION.unignore.onClick)
 
 	return svnPanel
 end
@@ -1257,7 +1277,7 @@ function SVN_PLUGIN:Step3cUpdateProjectTree()
 	if not self.isSvnDir then return end
 	local tree=ide:GetProjectTree()
 	--[[ JJvB this will not be functional
-	-- as subtrees are populated on open 
+	-- as subtrees are populated on open
 	local function traverse(prefix,root)
 		local roottext=tree:GetItemText(root)
 		printf("%s roottext=%s\n",prefix,vis(roottext))
@@ -1410,12 +1430,18 @@ local function onMenuDelete()
 end
 
 local function onMenuDiff(event)
-	printf("SVN_PLUGIN:onDiff(%s)\n",vis(event)) 
+	printf("SVN_PLUGIN:onDiff(%s)\n",vis(event))
 	-- is a xwCommandEvent
 	local _,focused=SVN_PLUGIN:GetSelectedTreeItems()
 	return SVN_PLUGIN:DoShowDiff(focused)
 end
 
+local function onMenuBlame(event)
+	printf("SVN_PLUGIN:onBlame(%s)\n",vis(event))
+	-- is a xwCommandEvent
+	local _,focused=SVN_PLUGIN:GetSelectedTreeItems()
+	return SVN_PLUGIN:DoShowBlame(focused)
+end
 
 function SVN_PLUGIN:onRegister()
 	printf=function(...)
@@ -1457,6 +1483,7 @@ function SVN_PLUGIN:onRegister()
 	tree:Connect(ID_RESOLVE,wx.wxEVT_COMMAND_MENU_SELECTED,onMenuResolve)
 	tree:Connect(ID_COMMIT, wx.wxEVT_COMMAND_MENU_SELECTED,onMenuCommit)
 	tree:Connect(ID_DIFF, 	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuDiff)
+	tree:Connect(ID_BLAME, 	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuBlame)
 	tree:Connect(ID_IGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuIgnore)
 	tree:Connect(ID_UNIGNORE,	wx.wxEVT_COMMAND_MENU_SELECTED,onMenuUnIgnore)
 end
@@ -1474,7 +1501,7 @@ function SVN_PLUGIN:onUnRegister()
 	end
 
 	if ide.RemovePanel and self.panel then
-		ide:RemovePanel("svnpanel") 
+		ide:RemovePanel("svnpanel")
 		self.panel=nil
 	end
 	--	local tb = ide:GetToolBar()
@@ -1499,7 +1526,7 @@ function SVN_PLUGIN:onProjectClose(project_dir)
 	self.WorkingDir=nil
 	self.isSvnDir=nil
 	self:UpdateSvnStatus()
-	printf("SVN_PLUGIN:onProjectClose(%s)",vis(project_dir)) 
+	printf("SVN_PLUGIN:onProjectClose(%s)",vis(project_dir))
 end
 
 ---[[ Uncomment this to see event names printed in the Output window
@@ -1511,7 +1538,7 @@ function SVN_PLUGIN:onMenuFiletree(menu,tree,event)
 	if #selected==0 then selected={focused} end
 	local enables=self:GetEnablesForFiles(selected)
 	if next(enables)==nil then return end
-	menu:AppendSeparator();	
+	menu:AppendSeparator();
 	local svnmenu=self:CreateMenuFor(enables)
 	menu:AppendSubMenu(svnmenu,"SVN")
 end
@@ -1540,7 +1567,7 @@ end
 function SVN_PLUGIN:onFiletreeFilePreRename(tree,id,src,dst)
 
 	-- if not subversion
-	if not self.isSvnDir then 
+	if not self.isSvnDir then
 		return  -- let zbs do the job
 	end
 
@@ -1578,7 +1605,7 @@ end
 function SVN_PLUGIN:onFiletreeFilePreDelete(tree,id,source)
 
 	-- if not subversion
-	if not self.isSvnDir then 
+	if not self.isSvnDir then
 		return  -- let zbs do the job
 	end
 
