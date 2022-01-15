@@ -33,6 +33,7 @@ local function quotedos(path)
 	return '"'..path:gsub('"','""')..'"'
 end
 local quotepath=({['\\']=quotedos,['/']=quoteunix})[DIRSEP] or error("no quote function for DIRSEP='"..DIRSEP.."'")
+local echostatus=({['\\']="&& echo %ERRORLEVEL%",['/']="; echo $?"})[DIRSEP] or error("no echostatus for DIRSEP='"..DIRSEP.."'")
 
 
 local function quoteshell(value)
@@ -136,6 +137,15 @@ local fontCourier=wx.wxFont(9,wx.wxFONTFAMILY_MODERN,wx.wxFONTSTYLE_NORMAL,wx.wx
 wx.wxDARK_GREEN=wx.wxColour(0,128,0);
 wx.wxDARK_RED=wx.wxColour(128,0,0);
 
+
+function SVN_PLUGIN:popen_command(cmd)
+	local fd=assert(io.popen(cmd.." 2>&1 "..echostatus))
+	local output=fd:read("*all")
+	fd:close()
+	local sts
+	output=output:gsub("%s*%d+%s*$",function(n) sts=tonumber(n) return ""end)
+	return output,sts
+end
 ------------------------------------------------------------
 -- the OneAndOnly command execute to capture output
 ------------------------------------------------------------
@@ -146,36 +156,22 @@ function SVN_PLUGIN:do_command(cmd,showoutput)
 	end
 	local t0=gettime()
 	wx.wxBeginBusyCursor()
-	--wx.wxSetEnv("LANG","C") -- wxExecuteStdoutStderr does not like utf8 output :-/
-
-	local fd=assert(io.popen(cmd.." 2>&1 ; echo $?"))
-	local output=fd:read("*all")
-	local errors=""
-	fd:close()
-	local sts
-	output=output:gsub("%s*%d+%s*$",function(n) sts=tonumber(n) return ""end)
-
-	--local sts,output,errors=wx.wxExecuteStdoutStderr(cmd)
-	--output=join(output,"\n"):gsub("%s+$","")
-	--errors=join(errors,"\n"):gsub("%s+$","")
-
+	local output,sts=self:popen_command(cmd)
 	wx.wxEndBusyCursor()
 	local t1=gettime()
 	if showoutput then
 		if output~="" then DisplayOutputLn(output) end
-		if errors~="" then DisplayOutputLn(errors) end
 	end
 	if sts~=0 then
-		local msg=sprintf("Execution of\n%s\nfailed!\nOutput=%s\nErrors=%s\n",cmd,output,errors)
+		local msg=sprintf("Execution of\n%s\nfailed!\nStatus=%s\nOutput=%s",cmd,vis(sts),vis(output))
 		wx.wxMessageBox(msg,"Subversion",wx.wxOK+wx.wxCANCEL+wx.wxICON_ERROR)
 	end
 	if verbose>=1 then
 		printf("SVN_PLUGIN:sts=%s in %.3f sec\n",vis(sts),t1-t0)
 		printf("SVN_PLUGIN:output=%s\n",vis(output,80))
-		printf("SVN_PLUGIN:errors=%s\n",vis(errors,80))
 	end
 	self.SetStatus("Did %.80s",cmd)
-	return output..errors,sts
+	return output,sts
 end
 
 function SVN_PLUGIN:svn_set_ignore(files,remove)
@@ -1087,7 +1083,7 @@ end
 --]]
 local function is_svn_dir(path)
 	local cmd=sprintf("svnversion \"%s\"",path:gsub("[\\/]$",""))
-	local output,sts=SVN_PLUGIN:do_command(cmd)
+	local output,sts=SVN_PLUGIN:popen_command(cmd)
 	return output:gsub(":",""):gsub("%s+$",""):match("^%d+%a*$")
 end
 
