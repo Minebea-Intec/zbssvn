@@ -76,8 +76,8 @@ On the right hand is a list of "status" icons. By these you can toggle, of which
 - [ ] allow to checkout or import a project
 - [ ] repository browser
 - [ ] standalone (use as svn gui without ZBS)
-- [ ] blame command
-- [ ] make svn ignore work without external tool
+- [x] blame command
+- [x] make svn ignore work without external tool
 
 -----
 
